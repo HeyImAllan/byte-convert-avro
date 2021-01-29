@@ -58,12 +58,12 @@ public class TransformTest {
     public static final org.apache.avro.Schema STRING_SCHEMA = org.apache.avro.Schema.create(STRING);
     public static final org.apache.avro.Schema BOOLEAN_SCHEMA = org.apache.avro.Schema.create(BOOLEAN);
     public static final org.apache.avro.Schema NAME_SCHEMA = SchemaBuilder.record("FullName")
-            .namespace("com.ing.eventbus.connect.schema.replication").fields()
+            .namespace("com.ing.eventbus.connect.schema.converers").fields()
             .requiredString("first")
             .requiredString("last")
             .endRecord();
     public static final org.apache.avro.Schema NAME_SCHEMA_ALIASED = SchemaBuilder.record("FullName")
-            .namespace("com.ing.eventbus.connect.schema.replication").fields()
+            .namespace("com.ing.eventbus.connect.schema.converers").fields()
             .requiredString("first")
             .name("surname").aliases("last").type().stringType().noDefault()
             .endRecord();

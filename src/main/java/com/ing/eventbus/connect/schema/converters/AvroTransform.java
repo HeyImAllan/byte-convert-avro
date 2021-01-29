@@ -12,6 +12,12 @@ import java.util.stream.Collectors;
 
 import joptsimple.internal.Strings;
 
+import org.apache.avro.file.DataFileReader;
+import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.DatumReader;
+import org.apache.avro.io.Decoder;
+import org.apache.avro.io.DecoderFactory;
 import org.apache.kafka.common.cache.Cache;
 import org.apache.kafka.common.cache.LRUCache;
 import org.apache.kafka.common.cache.SynchronizedCache;
@@ -129,8 +135,13 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
                     ByteBuffer b = ByteBuffer.wrap(keyAsBytes);
                     // Do something to add avro to key value.
                     
-                    Optional<org.apache.avro.Schema> keyAvroSchema = getSchema(b, topic, true);
-                    updatedKey = rewriteToAvroJsonFormat(keyAsBytes, keyAvroSchema);
+                    org.apache.avro.Schema keyAvroSchema = getSchema(b, topic, true);
+                    try {
+                        updatedKey = rewriteToAvroJsonFormat(b, keyAvroSchema);
+                    } catch (IOException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
                 }
             } else {
                 throw new ConnectException("AvroTransform - Transform failed. Record key does not have a byte[] schema.");
@@ -156,8 +167,13 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
                     throw new SerializationException("AvroTransform - Unexpected byte[] length " + valueByteLength + " for Avro record value.");
                 }
                 ByteBuffer b = ByteBuffer.wrap(valueAsBytes);
-                Optional<org.apache.avro.Schema> valueAvroSchema = getSchema(b, topic, false);
-                updatedValue = rewriteToAvroJsonFormat(valueAsBytes, valueAvroSchema);
+                org.apache.avro.Schema valueAvroSchema = getSchema(b, topic, false);
+                try {
+                    updatedValue = rewriteToAvroJsonFormat(b, valueAvroSchema);
+                } catch (IOException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
             }
         } else {
             throw new ConnectException("AvroTransform - Transform failed. Record value does not have a byte[] schema.");
@@ -181,12 +197,20 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
         return avroTopicMap.containsKey(topic) ? avroTopicMap.get(topic) : false;
     }
 
-    private Object rewriteToAvroJsonFormat(byte[] valueAsBytes, Optional<org.apache.avro.Schema> valueAvroSchema) {
-        Object newvalue = new Object();
-        return newvalue;
+    
+
+    private byte[] rewriteToAvroJsonFormat(ByteBuffer value, org.apache.avro.Schema valueAvroSchema)
+            throws IOException {
+        //Instantiating the Schema.Parser class.
+        org.apache.avro.Schema schema = valueAvroSchema;
+        DatumReader<GenericRecord> datumReader = new GenericDatumReader<GenericRecord>(schema);
+        Decoder decoder = DecoderFactory.get().binaryDecoder(value.array(), null);
+        GenericRecord emp = datumReader.read(null, decoder);
+        log.info(emp.toString());
+        return value.array();
     }
 
-    protected Optional<org.apache.avro.Schema> getSchema(ByteBuffer buffer, String topic, boolean isKey) {
+    protected org.apache.avro.Schema getSchema(ByteBuffer buffer, String topic, boolean isKey) {
         org.apache.avro.Schema schema;
         if (buffer.get() == MAGIC_BYTE) {
             int sourceSchemaId = buffer.getInt();
@@ -208,7 +232,7 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
         } else {
             throw new SerializationException("AvroTransform - Unknown magic byte!");
         }
-        return Optional.ofNullable(schema);
+        return schema;
     }
 
     @Override
