@@ -222,6 +222,7 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
     // No idea if this works this way.
     // private Object createContainerFile(Object decodedValue, org.apache.avro.Schema valueAvroSchema) {
     //     // implement https://avro.apache.org/docs/current/spec.html#Object+Container+Files
+    //     Implementation example : https://gist.github.com/davideicardi/e8c5a69b98e2a0f18867b637069d03a9
     //     return null;
     // }
 
