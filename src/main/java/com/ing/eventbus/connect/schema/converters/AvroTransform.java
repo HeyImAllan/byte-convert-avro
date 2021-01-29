@@ -1,4 +1,4 @@
-/* Licensed under Apache-2.0 */
+/* GNU GENERAL PUBLIC LICENSE */
 package com.ing.eventbus.connect.schema.converters;
 
 import java.io.IOException;
@@ -65,6 +65,7 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
 
     // caches from the source registry to prevent abusing the schema registry.
     private Cache<Integer, org.apache.avro.Schema> schemaCache;
+    private Map<String, Boolean> avroTopicMap;
 
     public AvroTransform() {
     }
@@ -87,7 +88,12 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
         Integer schemaCapacity = config.getInt(ConfigName.SCHEMA_CAPACITY);
 
         List<String> tempAvroList = config.getList(ConfigName.AVRO_TOPICS);
-        
+        this.avroTopicMap = validateAndParseAvroTopics(tempAvroList);
+        String mapAsString = avroTopicMap.keySet().stream()
+                .map(key -> key + "=" + avroTopicMap.get(key))
+                .collect(Collectors.joining(", ", "{", "}"));
+        log.info("SchemaRegistryTransfer - loaded avro topic map:{}", mapAsString);
+
         this.schemaCache = new SynchronizedCache<>(new LRUCache<>(schemaCapacity));
         this.sourceSchemaRegistryClient = new CachedSchemaRegistryClient(sourceUrls, schemaCapacity, sourceProps);
         this.includeHeaders = config.getBoolean(ConfigName.INCLUDE_HEADERS);
@@ -109,25 +115,26 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
         log.info("AvroTransform - apply for {} / {}", r.topic(), r.kafkaPartition());
         // Create new key.
         Object updatedKey = key;
-
-        if (ConnectSchemaUtil.isBytesSchema(keySchema) || key instanceof byte[]) {
-            if (key == null) {
-                log.info("AvroTransform - Passing through null record key.");
-            } else {
-                log.info("AvroTransform - process key: {}", new String((byte[]) key));
-                byte[] keyAsBytes = (byte[]) key;
-                int keyByteLength = keyAsBytes.length;
-                if (keyByteLength <= 5) {
-                    throw new SerializationException("AvroTransform - Unexpected byte[] length " + keyByteLength + " for Avro record key.");
+        if (processKeys(topic)) {
+            if (ConnectSchemaUtil.isBytesSchema(keySchema) || key instanceof byte[]) {
+                if (key == null) {
+                    log.info("AvroTransform - Passing through null record key.");
+                } else {
+                    log.info("AvroTransform - process key: {}", new String((byte[]) key));
+                    byte[] keyAsBytes = (byte[]) key;
+                    int keyByteLength = keyAsBytes.length;
+                    if (keyByteLength <= 5) {
+                        throw new SerializationException("AvroTransform - Unexpected byte[] length " + keyByteLength + " for Avro record key.");
+                    }
+                    ByteBuffer b = ByteBuffer.wrap(keyAsBytes);
+                    // Do something to add avro to key value.
+                    
+                    Optional<org.apache.avro.Schema> keyAvroSchema = getSchema(b, topic, true);
+                    updatedKey = rewriteToAvroJsonFormat(keyAsBytes, keyAvroSchema);
                 }
-                ByteBuffer b = ByteBuffer.wrap(keyAsBytes);
-                // Do something to add avro to key value.
-                
-                Optional<org.apache.avro.Schema> keyAvroSchema = getSchema(b, topic, true);
-                updatedKey = rewriteToAvroJsonFormat(keyAsBytes, keyAvroSchema);
+            } else {
+                throw new ConnectException("AvroTransform - Transform failed. Record key does not have a byte[] schema.");
             }
-        } else {
-            throw new ConnectException("AvroTransform - Transform failed. Record key does not have a byte[] schema.");
         }
     
 
@@ -168,6 +175,10 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
                         keySchema, updatedKey,
                         valueSchema, updatedValue,
                         r.timestamp());
+    }
+
+    private boolean processKeys(String topic) {
+        return avroTopicMap.containsKey(topic) ? avroTopicMap.get(topic) : false;
     }
 
     private Object rewriteToAvroJsonFormat(byte[] valueAsBytes, Optional<org.apache.avro.Schema> valueAvroSchema) {
@@ -242,40 +253,4 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
         String INCLUDE_HEADERS = "include.headers";
         String AVRO_TOPICS = "avro.topics";
     }
-
-    private static class SchemaAndId {
-        private Integer id;
-        private org.apache.avro.Schema schema;
-
-        SchemaAndId() {
-        }
-
-        SchemaAndId(int id, org.apache.avro.Schema schema) {
-            this.id = id;
-            this.schema = schema;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            SchemaAndId schemaAndId = (SchemaAndId) o;
-            return Objects.equals(id, schemaAndId.id) &&
-                    Objects.equals(schema, schemaAndId.schema);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(id, schema);
-        }
-
-        @Override
-        public String toString() {
-            return "SchemaAndId{" +
-                    "id=" + id +
-                    ", schema=" + schema +
-                    '}';
-        }
-    }
-
 }
