@@ -1,8 +1,10 @@
 /* GNU GENERAL PUBLIC LICENSE */
 package com.ing.eventbus.connect.schema.converters;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,10 +16,15 @@ import joptsimple.internal.Strings;
 
 import org.apache.avro.file.DataFileReader;
 import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumReader;
+import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
+import org.apache.avro.io.Encoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.io.JsonEncoder;
 import org.apache.kafka.common.cache.Cache;
 import org.apache.kafka.common.cache.LRUCache;
 import org.apache.kafka.common.cache.SynchronizedCache;
@@ -169,7 +176,7 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
                 ByteBuffer b = ByteBuffer.wrap(valueAsBytes);
                 org.apache.avro.Schema valueAvroSchema = getSchema(b, topic, false);
                 try {
-                    updatedValue = rewriteToAvroJsonFormat(b, valueAvroSchema);
+                    updatedValue = rewriteToSingleJson(valueAsBytes, valueAvroSchema);
                 } catch (IOException e) {
                     // TODO Auto-generated catch block
                     e.printStackTrace();
@@ -199,16 +206,53 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
 
     
 
-    private byte[] rewriteToAvroJsonFormat(ByteBuffer value, org.apache.avro.Schema valueAvroSchema)
+    private Object rewriteToSingleJson(byte[] value, org.apache.avro.Schema valueAvroSchema)
             throws IOException {
-        //Instantiating the Schema.Parser class.
-        org.apache.avro.Schema schema = valueAvroSchema;
-        DatumReader<GenericRecord> datumReader = new GenericDatumReader<GenericRecord>(schema);
-        Decoder decoder = DecoderFactory.get().binaryDecoder(value.array(), null);
-        GenericRecord emp = datumReader.read(null, decoder);
-        log.info(emp.toString());
-        return value.array();
+        //  Do magic to convert binary message to container
+        
+        // The below is pseudocode. 
+
+        //Object decodedValue = prepareBinaryValue(value, valueAvroSchema);
+        //Object encodedValue = createContainerFile(decodedValue, valueAvroSchema);
+        String jsonOut = avroToJson(valueAvroSchema, value);
+        return jsonOut;
     }
+
+    // No idea if this works this way.
+    private Object createContainerFile(Object decodedValue, org.apache.avro.Schema valueAvroSchema) {
+        // implement https://avro.apache.org/docs/current/spec.html#Object+Container+Files
+        return null;
+    }
+
+    // I have no idea if this works this way. Or if it is even needed.
+    private Object prepareBinaryValue(ByteBuffer value, org.apache.avro.Schema valueAvroSchema) {
+        DatumReader<GenericRecord> datumReader = new GenericDatumReader<GenericRecord>(valueAvroSchema);
+        Decoder decoder = DecoderFactory.get().binaryDecoder(value.array(), null);
+        Object decodedValue = new Object();
+        try {
+            decodedValue = datumReader.read(null, decoder);
+        } catch (IOException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        return decodedValue;
+    }
+    // Alternative approach that might work..
+    public String avroToJson(org.apache.avro.Schema schema, byte[] avroBinary) throws IOException {
+        // byte to datum
+        DatumReader<Object> datumReader = new GenericDatumReader<Object>(schema);
+        Decoder decoder = DecoderFactory.get().binaryDecoder(avroBinary, null);
+        Object avroDatum = datumReader.read(null, decoder);
+    
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+          DatumWriter<Object> writer = new GenericDatumWriter<Object>(schema);
+          JsonEncoder encoder = EncoderFactory.get().jsonEncoder(schema, baos, false);
+          writer.write(avroDatum, encoder);
+          encoder.flush();
+          baos.flush();
+          return new String(baos.toByteArray(), StandardCharsets.UTF_8);
+        }
+      }
 
     protected org.apache.avro.Schema getSchema(ByteBuffer buffer, String topic, boolean isKey) {
         org.apache.avro.Schema schema;
