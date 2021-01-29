@@ -215,28 +215,30 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
         //Object decodedValue = prepareBinaryValue(value, valueAvroSchema);
         //Object encodedValue = createContainerFile(decodedValue, valueAvroSchema);
         String jsonOut = avroToJson(valueAvroSchema, value);
+        log.info(jsonOut);
         return jsonOut;
     }
 
     // No idea if this works this way.
-    private Object createContainerFile(Object decodedValue, org.apache.avro.Schema valueAvroSchema) {
-        // implement https://avro.apache.org/docs/current/spec.html#Object+Container+Files
-        return null;
-    }
+    // private Object createContainerFile(Object decodedValue, org.apache.avro.Schema valueAvroSchema) {
+    //     // implement https://avro.apache.org/docs/current/spec.html#Object+Container+Files
+    //     return null;
+    // }
 
     // I have no idea if this works this way. Or if it is even needed.
-    private Object prepareBinaryValue(ByteBuffer value, org.apache.avro.Schema valueAvroSchema) {
-        DatumReader<GenericRecord> datumReader = new GenericDatumReader<GenericRecord>(valueAvroSchema);
-        Decoder decoder = DecoderFactory.get().binaryDecoder(value.array(), null);
-        Object decodedValue = new Object();
-        try {
-            decodedValue = datumReader.read(null, decoder);
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-        return decodedValue;
-    }
+    // private Object prepareBinaryValue(ByteBuffer value, org.apache.avro.Schema valueAvroSchema) {
+    //     DatumReader<GenericRecord> datumReader = new GenericDatumReader<GenericRecord>(valueAvroSchema);
+    //     Decoder decoder = DecoderFactory.get().binaryDecoder(value.array(), null);
+    //     Object decodedValue = new Object();
+    //     try {
+    //         decodedValue = datumReader.read(null, decoder);
+    //     } catch (IOException e) {
+    //         // TODO Auto-generated catch block
+    //         e.printStackTrace();
+    //     }
+    //     return decodedValue;
+    // }
+    
     // Alternative approach that might work..
     public String avroToJson(org.apache.avro.Schema schema, byte[] avroBinary) throws IOException {
         // byte to datum
