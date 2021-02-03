@@ -3,9 +3,9 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.ing.eventbus</groupId>
-    <artifactId>schema-registry-replication</artifactId>
+    <artifactId>avro-conversion</artifactId>
     <version>1.0.0-SNAPSHOT</version>
-    <name>schema-registry-replication</name>
+    <name>avro-conversion</name>
     <description>
         A Kafka Connect Transform for copying Confluent Schema Registry schemas between different registries.
     </description>

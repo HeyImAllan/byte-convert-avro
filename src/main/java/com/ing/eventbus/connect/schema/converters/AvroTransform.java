@@ -105,7 +105,7 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
         String mapAsString = avroTopicMap.keySet().stream()
                 .map(key -> key + "=" + avroTopicMap.get(key))
                 .collect(Collectors.joining(", ", "{", "}"));
-        log.info("SchemaRegistryTransfer - loaded avro topic map:{}", mapAsString);
+        log.info("AvroTransform - loaded avro topic map:{}", mapAsString);
 
         this.schemaCache = new SynchronizedCache<>(new LRUCache<>(schemaCapacity));
         this.sourceSchemaRegistryClient = new CachedSchemaRegistryClient(sourceUrls, schemaCapacity, sourceProps);
@@ -120,88 +120,95 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
     public R apply(R r) {
         final String topic = r.topic();
         log.info("AvroTransform - process record: {}", r.toString());
+        if (topicEnabled(topic)) {
+            // Transcribe the key's schema id
+            final Object key = r.key();
+            final Schema keySchema = r.keySchema();
 
-        // Transcribe the key's schema id
-        final Object key = r.key();
-        final Schema keySchema = r.keySchema();
-
-        log.info("AvroTransform - apply for {} / {}", r.topic(), r.kafkaPartition());
-        // Create new key.
-        Object updatedKey = key;
-        if (processKeys(topic)) {
-            if (ConnectSchemaUtil.isBytesSchema(keySchema) || key instanceof byte[]) {
-                if (key == null) {
-                    log.info("AvroTransform - Passing through null record key.");
-                } else {
-                    log.info("AvroTransform - process key: {}", new String((byte[]) key));
-                    byte[] keyAsBytes = (byte[]) key;
-                    int keyByteLength = keyAsBytes.length;
-                    if (keyByteLength <= 5) {
-                        throw new SerializationException("AvroTransform - Unexpected byte[] length " + keyByteLength + " for Avro record key.");
+            log.info("AvroTransform - apply for {} / {}", r.topic(), r.kafkaPartition());
+            // Create new key.
+            Object updatedKey = key;
+            if (processKeys(topic)) {
+                if (ConnectSchemaUtil.isBytesSchema(keySchema) || key instanceof byte[]) {
+                    if (key == null) {
+                        log.info("AvroTransform - Passing through null record key.");
+                    } else {
+                        log.info("AvroTransform - process key: {}", new String((byte[]) key));
+                        byte[] keyAsBytes = (byte[]) key;
+                        int keyByteLength = keyAsBytes.length;
+                        if (keyByteLength <= 5) {
+                            throw new SerializationException("AvroTransform - Unexpected byte[] length " + keyByteLength + " for Avro record key.");
+                        }
+                        ByteBuffer b = ByteBuffer.wrap(keyAsBytes);
+                        // Do something to add avro to key value.
+                        
+                        org.apache.avro.Schema keyAvroSchema = getSchema(b, topic, true);
+                        try {
+                            updatedKey = rewriteToSingleJson(keyAsBytes, keyAvroSchema);
+                        } catch (IOException e) {
+                            // TODO Auto-generated catch block
+                            e.printStackTrace();
+                        }
                     }
-                    ByteBuffer b = ByteBuffer.wrap(keyAsBytes);
-                    // Do something to add avro to key value.
-                    
-                    org.apache.avro.Schema keyAvroSchema = getSchema(b, topic, true);
+                } else {
+                    throw new ConnectException("AvroTransform - Transform failed. Record key does not have a byte[] schema.");
+                }
+            }
+        
+
+            // Transcribe the value's schema id
+            final Object value = r.value();
+            final Schema valueSchema = r.valueSchema();
+            
+            // Create new value
+            Object updatedValue = value;
+
+            if (ConnectSchemaUtil.isBytesSchema(valueSchema) || value instanceof byte[]) {
+                if (value == null) {
+                    log.info("AvroTransform - Passing through null record value");
+                } else {
+                    log.info("AvroTransform - process value: {}", new String((byte[]) value));
+                    byte[] valueAsBytes = (byte[]) value;
+                    int valueByteLength = valueAsBytes.length;
+                    if (valueByteLength <= 5) {
+                        throw new SerializationException("AvroTransform - Unexpected byte[] length " + valueByteLength + " for Avro record value.");
+                    }
+                    ByteBuffer b = ByteBuffer.wrap(valueAsBytes);
+                    org.apache.avro.Schema valueAvroSchema = getSchema(b, topic, false);
                     try {
-                        updatedKey = rewriteToAvroJsonFormat(b, keyAvroSchema);
+                        updatedValue = rewriteToSingleJson(valueAsBytes, valueAvroSchema);
                     } catch (IOException e) {
                         // TODO Auto-generated catch block
                         e.printStackTrace();
                     }
                 }
             } else {
-                throw new ConnectException("AvroTransform - Transform failed. Record key does not have a byte[] schema.");
+                throw new ConnectException("AvroTransform - Transform failed. Record value does not have a byte[] schema.");
             }
+
+
+            return includeHeaders ?
+                    r.newRecord(topic, r.kafkaPartition(),
+                            keySchema, updatedKey,
+                            valueSchema, updatedValue,
+                            r.timestamp(),
+                            r.headers())
+                    :
+                    r.newRecord(topic, r.kafkaPartition(),
+                            keySchema, updatedKey,
+                            valueSchema, updatedValue,
+                            r.timestamp());
         }
-    
-
-        // Transcribe the value's schema id
-        final Object value = r.value();
-        final Schema valueSchema = r.valueSchema();
-        
-        // Create new value
-        Object updatedValue = value;
-
-        if (ConnectSchemaUtil.isBytesSchema(valueSchema) || value instanceof byte[]) {
-            if (value == null) {
-                log.info("AvroTransform - Passing through null record value");
-            } else {
-                log.info("AvroTransform - process value: {}", new String((byte[]) value));
-                byte[] valueAsBytes = (byte[]) value;
-                int valueByteLength = valueAsBytes.length;
-                if (valueByteLength <= 5) {
-                    throw new SerializationException("AvroTransform - Unexpected byte[] length " + valueByteLength + " for Avro record value.");
-                }
-                ByteBuffer b = ByteBuffer.wrap(valueAsBytes);
-                org.apache.avro.Schema valueAvroSchema = getSchema(b, topic, false);
-                try {
-                    updatedValue = rewriteToSingleJson(valueAsBytes, valueAvroSchema);
-                } catch (IOException e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
-                }
-            }
-        } else {
-            throw new ConnectException("AvroTransform - Transform failed. Record value does not have a byte[] schema.");
+        else {
+            return r;
         }
-
-
-        return includeHeaders ?
-                r.newRecord(topic, r.kafkaPartition(),
-                        keySchema, updatedKey,
-                        valueSchema, updatedValue,
-                        r.timestamp(),
-                        r.headers())
-                :
-                r.newRecord(topic, r.kafkaPartition(),
-                        keySchema, updatedKey,
-                        valueSchema, updatedValue,
-                        r.timestamp());
     }
 
     private boolean processKeys(String topic) {
         return avroTopicMap.containsKey(topic) ? avroTopicMap.get(topic) : false;
+    }
+    private boolean topicEnabled(String topic) {
+        return avroTopicMap.containsKey(topic) ? true : false;
     }
 
     
