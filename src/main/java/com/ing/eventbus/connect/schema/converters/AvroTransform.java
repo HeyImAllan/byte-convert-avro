@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,8 +14,10 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import joptsimple.internal.Strings;
+import scala.Enumeration.Val;
 
 import org.apache.avro.file.DataFileReader;
+import org.apache.avro.file.SeekableByteArrayInput;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
@@ -55,20 +58,24 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
     public static final String SRC_SCHEMA_REGISTRY_CONFIG_DOC = "A list of addresses for the Schema Registry to copy from. The consumer's Schema Registry.";
     public static final String INCLUDE_HEADERS_CONFIG_DOC = "Whether or not to preserve the Kafka Connect Record headers.";
     public static final Boolean INCLUDE_HEADERS_CONFIG_DEFAULT = true;
-    public static final String AVRO_TOPICS_DOC = "A list with the avro topics using the format <topic-name>:<true|false> where the second param " +
-            "sets if the key is also serialized with avro or not";
+    public static final String AVRO_TOPICS_DOC = "A list with the avro topics using the format <topic-name>:<true|false> where the second param "
+            + "sets if the key is also serialized with avro or not";
     private static final Logger log = LoggerFactory.getLogger(AvroTransform.class);
     private static final byte MAGIC_BYTE = (byte) 0x0;
     // wire-format is magic byte + an integer, then data
-    //private static final short WIRE_FORMAT_PREFIX_LENGTH = 1 + (Integer.SIZE / Byte.SIZE);
+    // private static final short WIRE_FORMAT_PREFIX_LENGTH = 1 + (Integer.SIZE /
+    // Byte.SIZE);
 
     static {
         CONFIG_DEF = (new ConfigDef())
-                .define(ConfigName.SRC_SCHEMA_REGISTRY_URL, ConfigDef.Type.LIST, ConfigDef.NO_DEFAULT_VALUE, new NonEmptyListValidator(), ConfigDef.Importance.HIGH, SRC_SCHEMA_REGISTRY_CONFIG_DOC)
-                .define(ConfigName.SCHEMA_CAPACITY, ConfigDef.Type.INT, SCHEMA_CAPACITY_CONFIG_DEFAULT, ConfigDef.Importance.LOW, SCHEMA_CAPACITY_CONFIG_DOC)
-                .define(ConfigName.INCLUDE_HEADERS, ConfigDef.Type.BOOLEAN, INCLUDE_HEADERS_CONFIG_DEFAULT, ConfigDef.Importance.LOW, INCLUDE_HEADERS_CONFIG_DOC)
-                .define(ConfigName.AVRO_TOPICS, ConfigDef.Type.LIST, ConfigDef.NO_DEFAULT_VALUE, new NonEmptyListValidator(), ConfigDef.Importance.HIGH, AVRO_TOPICS_DOC)
-        ;
+                .define(ConfigName.SRC_SCHEMA_REGISTRY_URL, ConfigDef.Type.LIST, ConfigDef.NO_DEFAULT_VALUE,
+                        new NonEmptyListValidator(), ConfigDef.Importance.HIGH, SRC_SCHEMA_REGISTRY_CONFIG_DOC)
+                .define(ConfigName.SCHEMA_CAPACITY, ConfigDef.Type.INT, SCHEMA_CAPACITY_CONFIG_DEFAULT,
+                        ConfigDef.Importance.LOW, SCHEMA_CAPACITY_CONFIG_DOC)
+                .define(ConfigName.INCLUDE_HEADERS, ConfigDef.Type.BOOLEAN, INCLUDE_HEADERS_CONFIG_DEFAULT,
+                        ConfigDef.Importance.LOW, INCLUDE_HEADERS_CONFIG_DOC)
+                .define(ConfigName.AVRO_TOPICS, ConfigDef.Type.LIST, ConfigDef.NO_DEFAULT_VALUE,
+                        new NonEmptyListValidator(), ConfigDef.Importance.HIGH, AVRO_TOPICS_DOC);
         // TODO: Other properties might be useful, e.g. the Subject Strategies
     }
 
@@ -102,8 +109,7 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
 
         List<String> tempAvroList = config.getList(ConfigName.AVRO_TOPICS);
         this.avroTopicMap = validateAndParseAvroTopics(tempAvroList);
-        String mapAsString = avroTopicMap.keySet().stream()
-                .map(key -> key + "=" + avroTopicMap.get(key))
+        String mapAsString = avroTopicMap.keySet().stream().map(key -> key + "=" + avroTopicMap.get(key))
                 .collect(Collectors.joining(", ", "{", "}"));
         log.info("AvroTransform - loaded avro topic map:{}", mapAsString);
 
@@ -111,7 +117,8 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
         this.sourceSchemaRegistryClient = new CachedSchemaRegistryClient(sourceUrls, schemaCapacity, sourceProps);
         this.includeHeaders = config.getBoolean(ConfigName.INCLUDE_HEADERS);
 
-        log.info("AvroTransform - use default io.confluent.kafka.serializers.subject.TopicNameStrategy for managing schema");
+        log.info(
+                "AvroTransform - use default io.confluent.kafka.serializers.subject.TopicNameStrategy for managing schema");
         this.subjectNameStrategy = new TopicNameStrategy();
         log.info("AvroTransform - configure AvroTransform - END");
     }
@@ -119,9 +126,12 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
     @Override
     public R apply(R r) {
         final String topic = r.topic();
-        // [2021-02-04 11:06:25,146] INFO AvroTransform - process record: 
-        // SourceRecord{sourcePartition={cluster=tpakafka, partition=0, topic=itrca_foc}, sourceOffset={offset=4}} 
-        // ConnectRecord{topic='tpakafka.itrca_foc', kafkaPartition=0, key=null, keySchema=Schema{BYTES}, value=[B@1404015b, valueSchema=Schema{BYTES}, timestamp=1612433185126, headers=ConnectHeaders(headers=)} 
+        // [2021-02-04 11:06:25,146] INFO AvroTransform - process record:
+        // SourceRecord{sourcePartition={cluster=tpakafka, partition=0,
+        // topic=itrca_foc}, sourceOffset={offset=4}}
+        // ConnectRecord{topic='tpakafka.itrca_foc', kafkaPartition=0, key=null,
+        // keySchema=Schema{BYTES}, value=[B@1404015b, valueSchema=Schema{BYTES},
+        // timestamp=1612433185126, headers=ConnectHeaders(headers=)}
         // (com.ing.eventbus.connect.schema.converters.AvroTransform)
         if (topicEnabled(topic)) {
             log.info("AvroTransform - process record: {}", r.toString());
@@ -138,14 +148,15 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
                         log.info("AvroTransform - Passing through null record key.");
                     } else {
                         log.info("AvroTransform - process key: {}", new String((byte[]) key));
-                        byte[] keyAsBytes = (byte[]) key;
+                        byte[] keyAsBytes = (byte[]) updatedKey;
                         int keyByteLength = keyAsBytes.length;
                         if (keyByteLength <= 5) {
-                            throw new SerializationException("AvroTransform - Unexpected byte[] length " + keyByteLength + " for Avro record key.");
+                            throw new SerializationException("AvroTransform - Unexpected byte[] length " + keyByteLength
+                                    + " for Avro record key.");
                         }
                         ByteBuffer b = ByteBuffer.wrap(keyAsBytes);
                         // Do something to add avro to key value.
-                        
+
                         org.apache.avro.Schema keyAvroSchema = getSchema(b, topic, true);
                         try {
                             updatedKey = rewriteToSingleJson(keyAsBytes, keyAvroSchema);
@@ -155,15 +166,15 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
                         }
                     }
                 } else {
-                    throw new ConnectException("AvroTransform - Transform failed. Record key does not have a byte[] schema.");
+                    throw new ConnectException(
+                            "AvroTransform - Transform failed. Record key does not have a byte[] schema.");
                 }
             }
-        
 
             // Transcribe the value's schema id
             final Object value = r.value();
             final Schema valueSchema = r.valueSchema();
-            
+
             // Create new value
             Object updatedValue = value;
 
@@ -172,41 +183,44 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
                     log.info("AvroTransform - Passing through null record value");
                 } else {
                     log.info("AvroTransform - process value: {}", new String((byte[]) value));
-                    byte[] valueAsBytes = (byte[]) value;
+                    byte[] valueAsBytes = (byte[]) updatedValue;
                     int valueByteLength = valueAsBytes.length;
                     if (valueByteLength <= 5) {
-                        throw new SerializationException("AvroTransform - Unexpected byte[] length " + valueByteLength + " for Avro record value.");
+                        throw new SerializationException("AvroTransform - Unexpected byte[] length " + valueByteLength
+                                + " for Avro record value.");
                     }
                     ByteBuffer b = ByteBuffer.wrap(valueAsBytes);
                     org.apache.avro.Schema valueAvroSchema = getSchema(b, topic, false);
                     try {
-                        updatedValue = rewriteToSingleJson(valueAsBytes, valueAvroSchema);
+                        byte[] arr2 = Arrays.copyOfRange(valueAsBytes, 5, valueByteLength);
+                        updatedValue = rewriteToSingleJson((byte[]) arr2, valueAvroSchema);
                     } catch (IOException e) {
                         // TODO Auto-generated catch block
                         e.printStackTrace();
                     }
                 }
             } else {
-                throw new ConnectException("AvroTransform - Transform failed. Record value does not have a byte[] schema.");
+                throw new ConnectException(
+                        "AvroTransform - Transform failed. Record value does not have a byte[] schema.");
             }
 
+            // return includeHeaders ?
+            // r.newRecord(topic, r.kafkaPartition(),
+            // keySchema, updatedKey,
+            // valueSchema, updatedValue,
+            // r.timestamp(),
+            // r.headers())
+            // :
+            // r.newRecord(topic, r.kafkaPartition(),
+            // keySchema, updatedKey,
+            // valueSchema, updatedValue,
+            // r.timestamp());
+            // }
+            // We are still experimenting with reading, so just return the original message
+            // for now.
 
-        //     return includeHeaders ?
-        //             r.newRecord(topic, r.kafkaPartition(),
-        //                     keySchema, updatedKey,
-        //                     valueSchema, updatedValue,
-        //                     r.timestamp(),
-        //                     r.headers())
-        //             :
-        //             r.newRecord(topic, r.kafkaPartition(),
-        //                     keySchema, updatedKey,
-        //                     valueSchema, updatedValue,
-        //                     r.timestamp());
-        // }
-            // We are still experimenting with reading, so just return the original message for now.
-            
-            return r; }
-        else {
+            return r;
+        } else {
             return r;
         }
     }
@@ -214,53 +228,50 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
     private boolean processKeys(String topic) {
         return avroTopicMap.containsKey(topic) ? avroTopicMap.get(topic) : false;
     }
+
     private boolean topicEnabled(String topic) {
         return avroTopicMap.containsKey(topic) ? true : false;
     }
 
-    
-
-    private Object rewriteToSingleJson(byte[] value, org.apache.avro.Schema valueAvroSchema)
-            throws IOException {
-        //  Do magic to convert binary message to container
-        
-        // The below is pseudocode. 
-
-        //Object decodedValue = prepareBinaryValue(value, valueAvroSchema);
-        //Object encodedValue = createContainerFile(decodedValue, valueAvroSchema);
+    private Object rewriteToSingleJson(byte[] value, org.apache.avro.Schema valueAvroSchema) throws IOException {
         log.info("The output json is: {} ", avroToJson(valueAvroSchema, value));
         log.info("The applied schema was: {}", valueAvroSchema.toString());
         return avroToJson(valueAvroSchema, value);
     }
 
     // No idea if this works this way.
-    // private Object createContainerFile(Object decodedValue, org.apache.avro.Schema valueAvroSchema) {
-    //     // implement https://avro.apache.org/docs/current/spec.html#Object+Container+Files
-    //     Implementation example : https://gist.github.com/davideicardi/e8c5a69b98e2a0f18867b637069d03a9
-    //     return null;
+    // private Object createContainerFile(Object decodedValue,
+    // org.apache.avro.Schema valueAvroSchema) {
+    // // implement
+    // https://avro.apache.org/docs/current/spec.html#Object+Container+Files
+    // Implementation example :
+    // https://gist.github.com/davideicardi/e8c5a69b98e2a0f18867b637069d03a9
+    // return null;
+    // }
+    // I have no idea if this works this way. Or if it is even needed.
+    // private Object prepareBinaryValue(ByteBuffer value, org.apache.avro.Schema
+    // valueAvroSchema) {
+    // DatumReader<GenericRecord> datumReader = new
+    // GenericDatumReader<GenericRecord>(valueAvroSchema);
+    // Decoder decoder = DecoderFactory.get().binaryDecoder(value.array(), null);
+    // Object decodedValue = new Object();
+    // try {
+    // decodedValue = datumReader.read(null, decoder);
+    // } catch (IOException e) {
+    // // TODO Auto-generated catch block
+    // e.printStackTrace();
+    // }
+    // return decodedValue;
     // }
 
-    // I have no idea if this works this way. Or if it is even needed.
-    // private Object prepareBinaryValue(ByteBuffer value, org.apache.avro.Schema valueAvroSchema) {
-    //     DatumReader<GenericRecord> datumReader = new GenericDatumReader<GenericRecord>(valueAvroSchema);
-    //     Decoder decoder = DecoderFactory.get().binaryDecoder(value.array(), null);
-    //     Object decodedValue = new Object();
-    //     try {
-    //         decodedValue = datumReader.read(null, decoder);
-    //     } catch (IOException e) {
-    //         // TODO Auto-generated catch block
-    //         e.printStackTrace();
-    //     }
-    //     return decodedValue;
-    // }
-    
     // Alternative approach that might work..
-    public String avroToJson(org.apache.avro.Schema schema, byte[] avroBinary) throws IOException {
+    public String avroToJson(org.apache.avro.Schema schema, byte[] value) throws IOException {
         // byte to datum
-        DatumReader<Object> datumReader = new GenericDatumReader<Object>(schema);
-        Decoder decoder = DecoderFactory.get().binaryDecoder(avroBinary, null);
+        log.info("AvroTransform - converting value: {}", new String((byte[]) value));
+        GenericDatumReader<GenericRecord> datumReader = new GenericDatumReader<GenericRecord>(schema);
+        Decoder decoder = DecoderFactory.get().binaryDecoder(value, null);
         Object avroDatum = datumReader.read(null, decoder);
-    
+        log.info("datum {}", avroDatum.toString());
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
           DatumWriter<Object> writer = new GenericDatumWriter<Object>(schema);
           JsonEncoder encoder = EncoderFactory.get().jsonEncoder(schema, baos, false);
