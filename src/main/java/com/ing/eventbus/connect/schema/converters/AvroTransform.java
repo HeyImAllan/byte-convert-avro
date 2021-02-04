@@ -119,8 +119,12 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
     @Override
     public R apply(R r) {
         final String topic = r.topic();
-        log.info("AvroTransform - process record: {}", r.toString());
+        // [2021-02-04 11:06:25,146] INFO AvroTransform - process record: 
+        // SourceRecord{sourcePartition={cluster=tpakafka, partition=0, topic=itrca_foc}, sourceOffset={offset=4}} 
+        // ConnectRecord{topic='tpakafka.itrca_foc', kafkaPartition=0, key=null, keySchema=Schema{BYTES}, value=[B@1404015b, valueSchema=Schema{BYTES}, timestamp=1612433185126, headers=ConnectHeaders(headers=)} 
+        // (com.ing.eventbus.connect.schema.converters.AvroTransform)
         if (topicEnabled(topic)) {
+            log.info("AvroTransform - process record: {}", r.toString());
             // Transcribe the key's schema id
             final Object key = r.key();
             final Schema keySchema = r.keySchema();
@@ -187,18 +191,21 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
             }
 
 
-            return includeHeaders ?
-                    r.newRecord(topic, r.kafkaPartition(),
-                            keySchema, updatedKey,
-                            valueSchema, updatedValue,
-                            r.timestamp(),
-                            r.headers())
-                    :
-                    r.newRecord(topic, r.kafkaPartition(),
-                            keySchema, updatedKey,
-                            valueSchema, updatedValue,
-                            r.timestamp());
-        }
+        //     return includeHeaders ?
+        //             r.newRecord(topic, r.kafkaPartition(),
+        //                     keySchema, updatedKey,
+        //                     valueSchema, updatedValue,
+        //                     r.timestamp(),
+        //                     r.headers())
+        //             :
+        //             r.newRecord(topic, r.kafkaPartition(),
+        //                     keySchema, updatedKey,
+        //                     valueSchema, updatedValue,
+        //                     r.timestamp());
+        // }
+            // We are still experimenting with reading, so just return the original message for now.
+            
+            return r; }
         else {
             return r;
         }
@@ -221,9 +228,9 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
 
         //Object decodedValue = prepareBinaryValue(value, valueAvroSchema);
         //Object encodedValue = createContainerFile(decodedValue, valueAvroSchema);
-        String jsonOut = avroToJson(valueAvroSchema, value);
-        log.info(jsonOut);
-        return jsonOut;
+        log.info("The output json is: {} ", avroToJson(valueAvroSchema, value));
+        log.info("The applied schema was: {}", valueAvroSchema.toString());
+        return avroToJson(valueAvroSchema, value);
     }
 
     // No idea if this works this way.
@@ -260,7 +267,7 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
           writer.write(avroDatum, encoder);
           encoder.flush();
           baos.flush();
-          return new String(baos.toByteArray(), StandardCharsets.UTF_8);
+          return new String(baos.toByteArray(), StandardCharsets.ISO_8859_1);
         }
       }
 
