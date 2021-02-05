@@ -221,8 +221,7 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
         String newJson = avroToJson(valueAvroSchema, value);
         JSONObject valueJson = new JSONObject(newJson);
         valueJson.put("originSchema", valueAvroSchema.toString());
-        System.out.println(valueJson.toString());
-        return valueJson.toString();
+        return valueJson.toString().getBytes();
     }
 
     public String avroToJson(org.apache.avro.Schema schema, byte[] value) throws IOException {
@@ -247,7 +246,7 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
 
             schema = schemaCache.get(sourceSchemaId);
             if (schema != null) {
-                log.info("AvroTransform - Schema id {} has been seen before. Not retrieving the schema again.");
+                log.info("AvroTransform - Schema id {} has been seen before. Not retrieving the schema again.", sourceSchemaId);
             } else { // cache miss
                 log.info("AvroTransform - Schema id {} has not been seen before", sourceSchemaId);
                 try {
