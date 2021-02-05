@@ -15,7 +15,10 @@ import java.util.stream.Collectors;
 
 import joptsimple.internal.Strings;
 import scala.Enumeration.Val;
-
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
 import org.apache.avro.file.DataFileReader;
 import org.apache.avro.file.SeekableByteArrayInput;
 import org.apache.avro.generic.GenericDatumReader;
@@ -235,43 +238,18 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
 
     private Object rewriteToSingleJson(byte[] value, org.apache.avro.Schema valueAvroSchema) throws IOException {
         log.info("The output json is: {} ", avroToJson(valueAvroSchema, value));
+        String newJson = avroToJson(valueAvroSchema, value);
+        JSONObject mainObject = new JSONObject(newJson);
+
         log.info("The applied schema was: {}", valueAvroSchema.toString());
         return avroToJson(valueAvroSchema, value);
     }
 
-    // No idea if this works this way.
-    // private Object createContainerFile(Object decodedValue,
-    // org.apache.avro.Schema valueAvroSchema) {
-    // // implement
-    // https://avro.apache.org/docs/current/spec.html#Object+Container+Files
-    // Implementation example :
-    // https://gist.github.com/davideicardi/e8c5a69b98e2a0f18867b637069d03a9
-    // return null;
-    // }
-    // I have no idea if this works this way. Or if it is even needed.
-    // private Object prepareBinaryValue(ByteBuffer value, org.apache.avro.Schema
-    // valueAvroSchema) {
-    // DatumReader<GenericRecord> datumReader = new
-    // GenericDatumReader<GenericRecord>(valueAvroSchema);
-    // Decoder decoder = DecoderFactory.get().binaryDecoder(value.array(), null);
-    // Object decodedValue = new Object();
-    // try {
-    // decodedValue = datumReader.read(null, decoder);
-    // } catch (IOException e) {
-    // // TODO Auto-generated catch block
-    // e.printStackTrace();
-    // }
-    // return decodedValue;
-    // }
-
-    // Alternative approach that might work..
     public String avroToJson(org.apache.avro.Schema schema, byte[] value) throws IOException {
         // byte to datum
-        log.info("AvroTransform - converting value: {}", new String((byte[]) value));
         GenericDatumReader<GenericRecord> datumReader = new GenericDatumReader<GenericRecord>(schema);
         Decoder decoder = DecoderFactory.get().binaryDecoder(value, null);
         Object avroDatum = datumReader.read(null, decoder);
-        log.info("datum {}", avroDatum.toString());
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
           DatumWriter<Object> writer = new GenericDatumWriter<Object>(schema);
           JsonEncoder encoder = EncoderFactory.get().jsonEncoder(schema, baos, false);
