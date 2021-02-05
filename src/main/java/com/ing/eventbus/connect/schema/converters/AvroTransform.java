@@ -9,26 +9,14 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
-import joptsimple.internal.Strings;
-import scala.Enumeration.Val;
-import org.json.simple.JSONArray;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
-import org.json.simple.parser.ParseException;
-import org.apache.avro.file.DataFileReader;
-import org.apache.avro.file.SeekableByteArrayInput;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.io.DatumReader;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
-import org.apache.avro.io.Encoder;
 import org.apache.avro.io.EncoderFactory;
 import org.apache.avro.io.JsonEncoder;
 import org.apache.kafka.common.cache.Cache;
@@ -42,6 +30,7 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.transforms.Transformation;
 import org.apache.kafka.connect.transforms.util.NonEmptyListValidator;
 import org.apache.kafka.connect.transforms.util.SimpleConfig;
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,6 +39,7 @@ import io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientExcept
 import io.confluent.kafka.serializers.AbstractKafkaAvroSerDeConfig;
 import io.confluent.kafka.serializers.subject.TopicNameStrategy;
 import io.confluent.kafka.serializers.subject.strategy.SubjectNameStrategy;
+import joptsimple.internal.Strings;
 
 // @SuppressWarnings("unused")
 public class AvroTransform<R extends ConnectRecord<R>> implements Transformation<R> {
@@ -83,7 +73,6 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
     }
 
     private CachedSchemaRegistryClient sourceSchemaRegistryClient;
-    private SubjectNameStrategy<org.apache.avro.Schema> subjectNameStrategy;
     private boolean includeHeaders;
 
     // caches from the source registry to prevent abusing the schema registry.
@@ -122,20 +111,13 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
 
         log.info(
                 "AvroTransform - use default io.confluent.kafka.serializers.subject.TopicNameStrategy for managing schema");
-        this.subjectNameStrategy = new TopicNameStrategy();
+        new TopicNameStrategy();
         log.info("AvroTransform - configure AvroTransform - END");
     }
 
     @Override
     public R apply(R r) {
         final String topic = r.topic();
-        // [2021-02-04 11:06:25,146] INFO AvroTransform - process record:
-        // SourceRecord{sourcePartition={cluster=tpakafka, partition=0,
-        // topic=itrca_foc}, sourceOffset={offset=4}}
-        // ConnectRecord{topic='tpakafka.itrca_foc', kafkaPartition=0, key=null,
-        // keySchema=Schema{BYTES}, value=[B@1404015b, valueSchema=Schema{BYTES},
-        // timestamp=1612433185126, headers=ConnectHeaders(headers=)}
-        // (com.ing.eventbus.connect.schema.converters.AvroTransform)
         if (topicEnabled(topic)) {
             log.info("AvroTransform - process record: {}", r.toString());
             // Transcribe the key's schema id
@@ -145,6 +127,7 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
             log.info("AvroTransform - apply for {} / {}", r.topic(), r.kafkaPartition());
             // Create new key.
             Object updatedKey = key;
+            // I am not sure if this part of the code makes sense in our use case, but I will leave it here.
             if (processKeys(topic)) {
                 if (ConnectSchemaUtil.isBytesSchema(keySchema) || key instanceof byte[]) {
                     if (key == null) {
@@ -195,8 +178,10 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
                     ByteBuffer b = ByteBuffer.wrap(valueAsBytes);
                     org.apache.avro.Schema valueAvroSchema = getSchema(b, topic, false);
                     try {
+                        // The first  5 bytes of this value schema is metadata.
                         byte[] arr2 = Arrays.copyOfRange(valueAsBytes, 5, valueByteLength);
                         updatedValue = rewriteToSingleJson((byte[]) arr2, valueAvroSchema);
+                        log.info("Updated value is: {}", updatedValue);
                     } catch (IOException e) {
                         // TODO Auto-generated catch block
                         e.printStackTrace();
@@ -207,22 +192,18 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
                         "AvroTransform - Transform failed. Record value does not have a byte[] schema.");
             }
 
-            // return includeHeaders ?
-            // r.newRecord(topic, r.kafkaPartition(),
-            // keySchema, updatedKey,
-            // valueSchema, updatedValue,
-            // r.timestamp(),
-            // r.headers())
-            // :
-            // r.newRecord(topic, r.kafkaPartition(),
-            // keySchema, updatedKey,
-            // valueSchema, updatedValue,
-            // r.timestamp());
-            // }
-            // We are still experimenting with reading, so just return the original message
-            // for now.
-
-            return r;
+            return includeHeaders ?
+            r.newRecord(topic, r.kafkaPartition(),
+            keySchema, updatedKey,
+            valueSchema, updatedValue,
+            r.timestamp(),
+            r.headers())
+            :
+            r.newRecord(topic, r.kafkaPartition(),
+            keySchema, updatedKey,
+            valueSchema, updatedValue,
+            r.timestamp());
+           
         } else {
             return r;
         }
@@ -237,12 +218,11 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
     }
 
     private Object rewriteToSingleJson(byte[] value, org.apache.avro.Schema valueAvroSchema) throws IOException {
-        log.info("The output json is: {} ", avroToJson(valueAvroSchema, value));
         String newJson = avroToJson(valueAvroSchema, value);
-        JSONObject mainObject = new JSONObject(newJson);
-
-        log.info("The applied schema was: {}", valueAvroSchema.toString());
-        return avroToJson(valueAvroSchema, value);
+        JSONObject valueJson = new JSONObject(newJson);
+        valueJson.put("originSchema", valueAvroSchema.toString());
+        System.out.println(valueJson.toString());
+        return valueJson.toString();
     }
 
     public String avroToJson(org.apache.avro.Schema schema, byte[] value) throws IOException {
@@ -274,6 +254,7 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
                     log.info("AvroTransform - Looking up schema id {} in source registry", sourceSchemaId);
                     // Can't do getBySubjectAndId because that requires a Schema object for the strategy
                     schema = sourceSchemaRegistryClient.getById(sourceSchemaId);
+                    schemaCache.put(sourceSchemaId, schema);
                 } catch (IOException | RestClientException e) {
                     log.error(String.format("AvroTransform - Unable to fetch source schema for id %d.", sourceSchemaId), e);
                     throw new ConnectException(e);
