@@ -119,21 +119,21 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
     public R apply(R r) {
         final String topic = r.topic();
         if (topicEnabled(topic)) {
-            log.info("AvroTransform - process record: {}", r.toString());
+            log.debug("AvroTransform - process record: {}", r.toString());
             // Transcribe the key's schema id
             final Object key = r.key();
             final Schema keySchema = r.keySchema();
 
-            log.info("AvroTransform - apply for {} / {}", r.topic(), r.kafkaPartition());
+            log.debug("AvroTransform - apply for {} / {}", r.topic(), r.kafkaPartition());
             // Create new key.
             Object updatedKey = key;
             // I am not sure if this part of the code makes sense in our use case, but I will leave it here.
             if (processKeys(topic)) {
                 if (ConnectSchemaUtil.isBytesSchema(keySchema) || key instanceof byte[]) {
                     if (key == null) {
-                        log.info("AvroTransform - Passing through null record key.");
+                        log.debug("AvroTransform - Passing through null record key.");
                     } else {
-                        log.info("AvroTransform - process key: {}", new String((byte[]) key));
+                        log.debug("AvroTransform - process key: {}", new String((byte[]) key));
                         byte[] keyAsBytes = (byte[]) updatedKey;
                         int keyByteLength = keyAsBytes.length;
                         if (keyByteLength <= 5) {
@@ -166,9 +166,9 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
 
             if (ConnectSchemaUtil.isBytesSchema(valueSchema) || value instanceof byte[]) {
                 if (value == null) {
-                    log.info("AvroTransform - Passing through null record value");
+                    log.debug("AvroTransform - Passing through null record value");
                 } else {
-                    log.info("AvroTransform - process value: {}", new String((byte[]) value));
+                    log.debug("AvroTransform - process value: {}", new String((byte[]) value));
                     byte[] valueAsBytes = (byte[]) updatedValue;
                     int valueByteLength = valueAsBytes.length;
                     if (valueByteLength <= 5) {
@@ -181,7 +181,7 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
                         // The first  5 bytes of this value schema is metadata.
                         byte[] arr2 = Arrays.copyOfRange(valueAsBytes, 5, valueByteLength);
                         updatedValue = rewriteToSingleJson((byte[]) arr2, valueAvroSchema);
-                        log.info("Updated value is: {}", updatedValue);
+                        log.debug("Updated value is: {}", updatedValue);
                     } catch (IOException e) {
                         // TODO Auto-generated catch block
                         e.printStackTrace();
@@ -246,7 +246,7 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
 
             schema = schemaCache.get(sourceSchemaId);
             if (schema != null) {
-                log.info("AvroTransform - Schema id {} has been seen before. Not retrieving the schema again.", sourceSchemaId);
+                log.debug("AvroTransform - Schema id {} has been seen before. Not retrieving the schema again.", sourceSchemaId);
             } else { // cache miss
                 log.info("AvroTransform - Schema id {} has not been seen before", sourceSchemaId);
                 try {
@@ -254,6 +254,7 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
                     // Can't do getBySubjectAndId because that requires a Schema object for the strategy
                     schema = sourceSchemaRegistryClient.getById(sourceSchemaId);
                     schemaCache.put(sourceSchemaId, schema);
+                    log.info("AvroTransform - Schema stored in cache.");
                 } catch (IOException | RestClientException e) {
                     log.error(String.format("AvroTransform - Unable to fetch source schema for id %d.", sourceSchemaId), e);
                     throw new ConnectException(e);

@@ -21,13 +21,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.avro.io.Decoder;
+import org.apache.avro.io.DecoderFactory;
 
 import org.apache.avro.SchemaBuilder;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.GenericRecordBuilder;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
+import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.EncoderFactory;
 import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.connect.connector.ConnectRecord;
@@ -511,11 +516,11 @@ public class TransformTest {
             log.info("applying transformation");
             ConnectRecord record = createRecord(null, value);
             ConnectRecord appliedRecord = Assertions.assertDoesNotThrow(() -> smt.apply(record));
-            //Assertions.assertEquals(expectedOutput.getBytes(), appliedRecord.value());
+            String data = new String((byte[]) appliedRecord.value());
+            assertEquals(expectedOutput, data);
         } catch (IOException e) {
             fail(e);
         }
-
     }
     @Test
     @Disabled("TODO: Find scenario where a backwards compatible change cannot be undone")
