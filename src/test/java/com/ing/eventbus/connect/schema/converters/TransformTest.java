@@ -505,7 +505,7 @@ public class TransformTest {
         try {
             // Create new message
             configure(true);
-            final String expectedOutput = "{\"originSchema\":\"{\\\"type\\\":\\\"record\\\",\\\"name\\\":\\\"FullName\\\",\\\"namespace\\\":\\\"com.ing.eventbus.connect.schema.converters\\\",\\\"fields\\\":[{\\\"name\\\":\\\"first\\\",\\\"type\\\":\\\"string\\\"},{\\\"name\\\":\\\"last\\\",\\\"type\\\":\\\"string\\\"}]}\",\"last\":\"lname\",\"first\":\"fname\"}";
+            final String expectedOutput = "{\"originSchema\":\"{\\\"type\\\":\\\"record\\\",\\\"name\\\":\\\"FullName\\\",\\\"namespace\\\":\\\"com.ing.eventbus.connect.schema.converters\\\",\\\"fields\\\":[{\\\"name\\\":\\\"first\\\",\\\"type\\\":\\\"string\\\"},{\\\"name\\\":\\\"last\\\",\\\"type\\\":\\\"string\\\"}]}\",\"originMessage\":\"{\\\"first\\\":\\\"fname\\\",\\\"last\\\":\\\"lname\\\"}\",\"originSchemaId\":1}";
             int sourceId = sourceSchemaRegistry.registerSchema(TOPIC, false, NAME_SCHEMA);
             GenericData.Record record1 = new GenericRecordBuilder(NAME_SCHEMA)
                     .set("first", "fname")

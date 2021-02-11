@@ -177,14 +177,18 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
                     }
                     ByteBuffer b = ByteBuffer.wrap(valueAsBytes);
                     org.apache.avro.Schema valueAvroSchema = getSchema(b, topic, false);
-                    try {
-                        // The first  5 bytes of this value schema is metadata.
-                        byte[] arr2 = Arrays.copyOfRange(valueAsBytes, 5, valueByteLength);
-                        updatedValue = rewriteToSingleJson((byte[]) arr2, valueAvroSchema);
-                        log.debug("Updated value is: {}", updatedValue);
-                    } catch (IOException e) {
-                        // TODO Auto-generated catch block
-                        e.printStackTrace();
+                    b = ByteBuffer.wrap(valueAsBytes);
+                    if (b.get() == MAGIC_BYTE) {
+                        int sourceSchemaId = b.getInt();
+                        try {
+                            // The first  5 bytes of this value schema is metadata.
+                            byte[] arr2 = Arrays.copyOfRange(valueAsBytes, 5, valueByteLength);
+                            updatedValue = rewriteToSingleJson(sourceSchemaId, (byte[]) arr2, valueAvroSchema);
+                            log.debug("Updated value is: {}", updatedValue);
+                        } catch (IOException e) {
+                            // TODO Auto-generated catch block
+                            e.printStackTrace();
+                        }
                     }
                 }
             } else {
@@ -223,6 +227,14 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
         valueJson.put("originSchema", valueAvroSchema.toString());
         return valueJson.toString().getBytes();
     }
+    private Object rewriteToSingleJson(int sourceSchemaId, byte[] value, org.apache.avro.Schema valueAvroSchema) throws IOException {
+        String newJson = avroToJson(valueAvroSchema, value);
+        JSONObject valueJson = new JSONObject();
+        valueJson.put("originMessage", newJson);        
+        valueJson.put("originSchema", valueAvroSchema.toString());
+        valueJson.put("originSchemaId", sourceSchemaId);
+        return valueJson.toString().getBytes();
+    }
 
     public String avroToJson(org.apache.avro.Schema schema, byte[] value) throws IOException {
         // byte to datum
@@ -235,7 +247,7 @@ public class AvroTransform<R extends ConnectRecord<R>> implements Transformation
           writer.write(avroDatum, encoder);
           encoder.flush();
           baos.flush();
-          return new String(baos.toByteArray(), StandardCharsets.ISO_8859_1);
+          return new String(baos.toByteArray(), StandardCharsets.UTF_8);
         }
       }
 
